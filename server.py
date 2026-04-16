@@ -97,10 +97,18 @@ async def predict(req: OCRRequest):
         merge = req.merge_level if req.merge_level in ("layout", "word", "sentence", "paragraph") else "paragraph"
         predictions = ocr_model(tmp_path, merge_level=merge)
         logger.info("merge_level=%s", merge)
-    except Exception as e:
+    except RuntimeError as e:
+        os.unlink(tmp_path)
+        if "doesn't have storage" in str(e) or "Cannot access data pointer" in str(e):
+            logger.warning("OCR: no text regions detected, returning empty result")
+            return OCRResponse(full_text="", lines=[], avg_confidence=0.0)
         logger.exception("OCR error: %s", e)
         raise HTTPException(500, str(e))
-    finally:
+    except Exception as e:
+        os.unlink(tmp_path)
+        logger.exception("OCR error: %s", e)
+        raise HTTPException(500, str(e))
+    else:
         os.unlink(tmp_path)
 
     img = Image.open(io.BytesIO(img_bytes))
